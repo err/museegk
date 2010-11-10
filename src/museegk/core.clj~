@@ -1,22 +1,21 @@
 (ns museegk.core
-  (:use
-	[rosado.processing]
+  (:use	[rosado.processing]
         [rosado.processing.applet])
-  (:require [overtone.live]))
+  (:require [overtone.live :as tone]))
 
 
 
 
 (def sample-paths
 
-     {:c3 "/Users/ike/code/clj/museegk/samples/C3.wav"
-      :d "/Users/ike/code/clj/museegk/samples/D.wav"
-      :e "/Users/ike/code/clj/museegk/samples/E.wav"
-      :f "/Users/ike/code/clj/museegk/samples/F.wav"
-      :g "/Users/ike/code/clj/museegk/samples/G.wav"
-      :a "/Users/ike/code/clj/museegk/samples/A.wav"
+     {:c4 "/Users/ike/code/clj/museegk/samples/C4.wav"
       :b "/Users/ike/code/clj/museegk/samples/B.wav"
-      :c4 "/Users/ike/code/clj/museegk/samples/C4.wav"}
+      :a "/Users/ike/code/clj/museegk/samples/A.wav"
+      :g "/Users/ike/code/clj/museegk/samples/G.wav"
+      :f "/Users/ike/code/clj/museegk/samples/F.wav"
+      :e "/Users/ike/code/clj/museegk/samples/E.wav"
+      :d "/Users/ike/code/clj/museegk/samples/Dnew.wav"
+      :c3 "/Users/ike/code/clj/museegk/samples/C3.wav"} 
 
      ;; simple pattern I like
      ;; {:d "/Users/ike/code/clj/museegk/samples/D.wav"
@@ -30,7 +29,7 @@
      )
 
 (defn load-samples []
-  (doall (map overtone.live/sample (keys sample-paths))))
+  (doall (map tone/sample (vals sample-paths))))
 
 
 ;;Atoms
@@ -41,7 +40,7 @@
 ;  1 - pressed
 
 ;;Refs
-(def *time* (ref 0))
+(def *time* (atom 0))
 
 ;;Structs
 (defrecord rgb-color [r g b a]);;unused?
@@ -68,7 +67,7 @@
 
 
 
-;;(defrecord button [x-pos y-pos edge-length color sample active?])
+;;(defrecord button [x-pos y-pos edge-length color snd active?])
 					;
 (defn create-button [idx x y len color sample active?]
   (button. idx x y len color sample active?))
@@ -81,7 +80,7 @@
 	]
     
     (defn make-button
-;     ([b] (create-button (:x-pos b) (:y-pos b) (:edge-length b) (:edge-length b) (:color b) (:freq b) (:active? b)))
+;     ([b] (create-button (:x-pos b) (:y-pos b) (:edge-length b) (:edge-length b) (:color b) (:snd b) (:active? b)))
       [i x y s] (create-button i x y length *inactive-color* s false))
 
     (loop [res [] row 0 col 0 idx 0 samples (load-samples)]
@@ -110,8 +109,6 @@
    n - desired row
    x - number of rows in matrix
    y - number of cols in matrix"
-
-
   [n x y]			
   (range  (* n y) (+ y (* n y))))
 
@@ -140,7 +137,7 @@
 ;;   (map (fn [elt] (if (some #(== (:idx elt) %) target)
 ;; 		   (button. (:idx elt) (:x-pos elt) (:y-pos elt) (:edge-length elt)
 ;; 			     (if turn-on? active-b inactive-b); (:active? cur-b) inactive-b active-b)
-;;; 			     (:freq cur-b) (if turn-on? true false) ))) vec))
+;;; 			     (:snd cur-b) (if turn-on? true false) ))) vec))
 
 
 (defn activate [vec indices turn-on?]
@@ -156,7 +153,7 @@
 	    new-b (when (some #(== idx %) indices)
 		    (button. idx (:x-pos cur-b) (:y-pos cur-b) (:edge-length cur-b)
 			     (if turn-on? active-b inactive-b); (:active? cur-b) inactive-b active-b)
-			     (:freq cur-b) (if turn-on? true false)))]
+			     (:snd cur-b) (if turn-on? true false)))]
 
 	(if (= idx vec-len)
 	  (conj res (or new-b cur-b))
@@ -176,11 +173,11 @@
 					;highlight  
 		    (button. idx (:x-pos cur-b) (:y-pos cur-b) (:edge-length cur-b)
 			     (if (:active? cur-b) active-hl inactive-hl)
-			     (:freq cur-b) (:active? cur-b))
+			     (:snd cur-b) (:active? cur-b))
 					;de-highlight
 		    (button. idx  (:x-pos cur-b) (:y-pos cur-b) (:edge-length cur-b)
 			     (if (:active? cur-b) active-b inactive-b)
-			     (:freq cur-b) (:active? cur-b)))]
+			     (:snd cur-b) (:active? cur-b)))]
 
 	(if (= idx vec-len)
 	  (conj res new-b)
@@ -200,11 +197,11 @@
 		;highlight  
 		(button. idx (:x-pos cur-b) (:y-pos cur-b) (:edge-length cur-b)
 			 (if (:active? cur-b) active-hl inactive-hl)
-			 (:freq cur-b) (:active? cur-b))
+			 (:snd cur-b) (:active? cur-b))
 		;de-highlight
 		(button. idx  (:x-pos cur-b) (:y-pos cur-b) (:edge-length cur-b)
 			 (if (:active? cur-b) active-b inactive-b)
-			 (:freq cur-b) (:active? cur-b)))]
+			 (:snd cur-b) (:active? cur-b)))]
 	(if (= idx vec-len)
 	  (conj res new-b)
 	  (recur (conj res new-b) (inc idx)))))))
@@ -227,7 +224,7 @@
   ;; 			     ;; 	       (= (:color cur-b) inactive-b) inactive-hl
   ;; 			     ;; 	       :else (:color cur-b)))
 
-  ;; 			   (:freq cur-b) (:active? cur-b)) ;)
+  ;; 			   (:snd cur-b) (:active? cur-b)) ;)
   ;; 	    ]
   ;; 	(if (= idx vec-len)
   ;; 	  (conj res new-b)
@@ -250,27 +247,27 @@
 		;highlight  
 		(button. idx (:x-pos cur-b) (:y-pos cur-b) (:edge-length cur-b)
 			 (if (:active? cur-b) active-hl inactive-hl)
-			 (:freq cur-b) (:active? cur-b))
+			 (:snd cur-b) (:active? cur-b))
 		;de-highlight
 		(button. idx  (:x-pos cur-b) (:y-pos cur-b) (:edge-length cur-b)
 			 (if (:active? cur-b) active-b inactive-b)
-			 (:freq cur-b) (:active? cur-b)))]
+			 (:snd cur-b) (:active? cur-b)))]
 	(if (= idx vec-len)
 	  (conj res new-b)
 	  (recur (conj res new-b) (inc idx)))))))
 
 
 ;; hm.. could use some refactoring
-(let [rows (ref (apply concat (iterate #(shuffle %) (shuffle (range *matrix-rows*)))))
-      cols (ref (apply concat (iterate #(shuffle %) (shuffle (range *matrix-cols*)))))]
+(let [rows (atom (apply concat (iterate #(shuffle %) (shuffle (range *matrix-rows*)))))
+      cols (atom (apply concat (iterate #(shuffle %) (shuffle (range *matrix-cols*)))))]
   (defn rand-row []
     (let [h (first @rows)]
-      (dosync (ref-set rows (next @rows)))
+      (swap! rows next)
       h))
   
   (defn rand-col []
     (let [h (first @cols)]
-      (dosync (ref-set cols (next @cols)))
+      (swap! cols next)
       h)))
 
 (def *rand-cols* (ref (shuffle (range *matrix-rows*))))
@@ -280,11 +277,17 @@
 
 (let [rc-toggle (atom 1)]
   (defn update []
-    (when (zero? (mod @*time* 8))
-      (if (pos? @rc-toggle)
-	(dosync (alter *matrix* (fn [vec n] (hl vec (nth-row n *matrix-rows* *matrix-cols*))) (rand-row)))
-	(dosync (alter *matrix* (fn [vec n] (hl vec (nth-col n *matrix-rows* *matrix-cols*))) (rand-col)))
-	)
+    (when (zero? (mod @*time* 10))
+      ;; (if (pos? @rc-toggle)
+      ;; 	(dosync
+      ;; 	 (let [r (rand-row)]
+      ;; 	   ;(println "\n ROW: " r)
+      ;; 	   (alter *matrix* (fn [vec n] (hl vec (nth-row n *matrix-rows* *matrix-cols*))) r ))) ;(rand-row)
+      ;; 	(dosync
+      ;; 	 (let [c (rand-col)]
+      ;; 	   ;(println "\n col: " c)
+      ;; 	   (alter *matrix* (fn [vec n] (hl vec (nth-col n *matrix-rows* *matrix-cols*))) c )))  ;	 (rand-col)
+      ;; 	)
       (swap! rc-toggle #(* % -1)))))
 
 					;(if (zero? (int (Math/floor (rand 2)))) ;row/col coin toss
@@ -298,7 +301,7 @@
 
 ;; (defrecord rgb-color [r g b a])
 ;; (defrecord hsb-color [h s b a])
-;; (defrecord button [idx x-pos y-pos edge-length color freq active?])
+;; (defrecord button [idx x-pos y-pos edge-length color snd active?])
 (defn draw-button [button]
   (let [ x (:x-pos button)
 	 y (:y-pos button)
@@ -317,13 +320,13 @@
     (rect x y l l)))
 
 (defn draw-matrix [m]
-  (doall (map draw-button m)))
+  (dorun (map draw-button m)))
 
 (defn draw []
   (color-mode RGB)
   (background 0)
   (draw-matrix @*matrix*)
-  (dosync (alter *time* inc))
+  (swap! *time* inc)
   (update))
 
 ;;;; INPUT EVENTS
@@ -345,7 +348,7 @@
       [(first res) (:idx (first res))]
       [nil -1])))
 
-(def *toggle-on* (atom nil))
+(def *toggle-on* (atom false))
 (def *starting-block* (atom -1))
 (def *visited* (atom nil))
 
@@ -358,7 +361,7 @@
       (when selection?
 	(dosync
 	 (if (:active? (nth @*matrix* idx))
-	   (reset! *toggle-on* nil)
+	   (reset! *toggle-on* false)
 	   (reset! *toggle-on* true))
 	 (reset! *starting-block* idx)
 	 (swap!  *visited* conj idx)
@@ -374,7 +377,7 @@
     ;; 		   (int (rand *matrix-rows*))
     ;; 		   (int (rand *matrix-cols*))))
     (reset! *visited* nil)
-    (reset! *toggle-on* nil)
+    (reset! *toggle-on* false)
     (reset! *mouse-button* (* -1 b))))
 
 (defn mouse-dragged [evt]
@@ -383,81 +386,52 @@
     (let [[selection? idx] (collision? @*matrix* x y)]
       (println "mouse-dragged:  " selection? "\n" idx "\nvisited: " @*visited* "\ntoggle: " @*toggle-on*  "\n")
       (when selection? 
-	(when (not (some #(== idx %) @*visited*))
-	  (dosync (alter *matrix* (fn [vec ind] (activate vec [ind] @*toggle-on*)) idx)))
+	(dosync
+	 (when (not (some #(== idx %) @*visited*))
+	   (alter *matrix* (fn [vec ind] (activate vec [ind] @*toggle-on*)) idx)))
 	 (swap! *visited* #(distinct (conj % idx)))))
     (reset! *mouse-position* [x y])))
 
 
 (def m-agent (agent nil))
 
+(def metro (tone/metronome 120))
+
+;; (def tones
+;;      (map #([(:idx %) (:snd %) (:active? %)])
+;; 	  @*matrix*))
+
+(defn get-button [idx]
+ (nth @*matrix* idx)
+  ;; (nth @tones idx)
+  )
+
+(defn simple-player [beat buttons]
+  (let [active? (:active? (get-button (first buttons)))
+	smpl (:snd (get-button (first buttons)))]
+
+    (tone/at (metro beat)
+	     (when active? (smpl)))
+
+    (tone/apply-at #'simple-player
+		   (metro (inc beat))
+		   (inc beat)
+		   (next buttons))))
+
+
 (defn setup []
   "Runs once."
   (smooth)
   (background-float 200 200 255)
   (framerate *framerate*)
-  (let [samples (doall (map :snd (map (fn [idx] (nth *matrix* idx))
-				      (map (fn [row] (nth-row row *matrix-rows* *matrix-cols*))
-					   (range *matrix cols*)))))]
-    (map (fn [row-sample]
-	   (send (agent nil)
-		 (fn [_] (simple-player ((metronome 144)) row-sample))))
-	 (map :sample-fn samples))))
-
-
-
-(def metro (metronome 100))
-
-(defn simple-player [beat buttons]
-  (let [active? (:active? @(first buttons))
-	sampl (:sample @(first butons))]
-    (at (metro beat)
-	(when active? sampl)))
-
-  (apply-at #'simple-player
-            (metro (+ .25 beat)) ;1/4 notes
-            (+ .25 beat)
-            (cycle buttons)))
-
-(def b-notes [40 40 43 45])
-(def b-vels  [0.4 0.3 0.3 0.4])
-(def b-durs  [0.5 0.1 0.4 0.5])
-
-(simple-player (metro)
-	       (cycle buttons))
-
-
-
-
-
-
-(def sample-paths
-
-     {:c3 "/Users/ike/code/clj/museegk/samples/C3.wav"
-      :d "/Users/ike/code/clj/museegk/samples/D.wav"
-      :e "/Users/ike/code/clj/museegk/samples/E.wav"
-      :f "/Users/ike/code/clj/museegk/samples/F.wav"
-      :g "/Users/ike/code/clj/museegk/samples/G.wav"
-      :a "/Users/ike/code/clj/museegk/samples/A.wav"
-      :b "/Users/ike/code/clj/museegk/samples/B.wav"
-      :c4 "/Users/ike/code/clj/museegk/samples/C4.wav"}
-
-     ;; simple pattern I like
-     ;; {:d "/Users/ike/code/clj/museegk/samples/D.wav"
-     ;;  :e "/Users/ike/code/clj/museegk/samples/E.wav"
-     ;;  :c3 "/Users/ike/code/clj/museegk/samples/C3.wav"
-     ;;  :g "/Users/ike/code/clj/museegk/samples/G.wav"
-     ;;  :f "/Users/ike/code/clj/museegk/samples/F.wav"
-     ;;  :b "/Users/ike/code/clj/museegk/samples/B.wav"
-     ;;  :a "/Users/ike/code/clj/museegk/samples/A.wav"
-     ;;  :c4 "/Users/ike/code/clj/museegk/samples/C4.wav"}
-     )
-
-(defn load-samples []
-  (map overtone.live/sample (keys sample-paths)))
-
-
-
+  (let [rows (map (fn [row] (nth-row row *matrix-rows* *matrix-cols*))
+		  (range *matrix-cols*))]
+    (doall (map (fn [b]
+		  (send (agent nil)
+			(fn [_] (simple-player (metro) (cycle  b)))))
+		rows))
+    )
+  )
 
 
 (defapplet museegk
@@ -473,9 +447,6 @@
 
 
 
-(run museegk :interactive)
+;(run museegk :interactive)
 ; 
 ;; (stop museegk)
-
-
-

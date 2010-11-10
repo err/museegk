@@ -277,7 +277,7 @@
 
 (let [rc-toggle (atom 1)]
   (defn update []
-    (when (zero? (mod @*time* 10))
+    (when (zero? (mod @*time* 4))
       ;; (if (pos? @rc-toggle)
       ;; 	(dosync
       ;; 	 (let [r (rand-row)]
@@ -443,6 +443,8 @@
   :mouse-pressed mouse-pressed
   :mouse-released mouse-released
   :mouse-dragged mouse-dragged)
+
+
 
 
 
