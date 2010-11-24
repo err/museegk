@@ -278,16 +278,16 @@
 (let [rc-toggle (atom 1)]
   (defn update []
     (when (zero? (mod @*time* 4))
-      ;; (if (pos? @rc-toggle)
-      ;; 	(dosync
-      ;; 	 (let [r (rand-row)]
-      ;; 	   ;(println "\n ROW: " r)
-      ;; 	   (alter *matrix* (fn [vec n] (hl vec (nth-row n *matrix-rows* *matrix-cols*))) r ))) ;(rand-row)
-      ;; 	(dosync
-      ;; 	 (let [c (rand-col)]
-      ;; 	   ;(println "\n col: " c)
-      ;; 	   (alter *matrix* (fn [vec n] (hl vec (nth-col n *matrix-rows* *matrix-cols*))) c )))  ;	 (rand-col)
-      ;; 	)
+      (if (pos? @rc-toggle)
+      	(dosync
+      	 (let [r (rand-row)]
+      	   ;(println "\n ROW: " r)
+      	   (alter *matrix* (fn [vec n] (hl vec (nth-row n *matrix-rows* *matrix-cols*))) r ))) ;(rand-row)
+      	(dosync
+      	 (let [c (rand-col)]
+      	   ;(println "\n col: " c)
+      	   (alter *matrix* (fn [vec n] (hl vec (nth-col n *matrix-rows* *matrix-cols*))) c )))  ;	 (rand-col)
+      	)
       (swap! rc-toggle #(* % -1)))))
 
 					;(if (zero? (int (Math/floor (rand 2)))) ;row/col coin toss
@@ -344,7 +344,7 @@
 			(and (< xb x) (< x (+ xb len))
 			     (< yb y) (< y (+ yb len)))))
 		    vec)]
-    (if (not (empty? res))
+    (if (not (zero? (count res)))
       [(first res) (:idx (first res))]
       [nil -1])))
 
