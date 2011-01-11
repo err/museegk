@@ -1,0 +1,24 @@
+(ns matrix-gen)
+
+
+
+
+(defn n-iterate
+  "Returns a (length n) sequence of x, (f x), (f (f x)), etc"
+  [n f x]
+  (take n (iterate f x)))
+
+
+(def row-coords (n-iterate n
+			   #(+ % *button-height* *dy*)
+			   *border-width*))
+
+(def col-coords (n-iterate n
+			   #(+ % *button-width* *dx*)
+			   *border-width*))
+
+
+(def matrix-coords [r-coords c-coords]
+     (clojure.contrib.combinatorics/*classpath*))
+
+
