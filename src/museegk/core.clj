@@ -5,6 +5,15 @@
   	    [clojure.contrib.combinatorics :as combo]))
 
 
+;; the following were all recorded for 16X16 matricies
+(def contemplative [82 105 114 119 133 137 162 165 169 197])
+
+(def dino-dna [27 29 44 79 86 87 101 105 110
+	       122 125 130 139 151 166 168
+	       171 173 183 190 211 219 226
+	       229 234 238 240 246 248 255])
+
+
 (def snow-day-2 [34 55 65 106 134 141 155 159
 		 177 179 182 184 187 189 191
 		 209 211 214 216 219 221 223])
@@ -107,14 +116,14 @@
 (def *active-color*    185)
 (def *inactive-color*   80)
 (def *intensified-color* 220)
-(def *matrix-rows*      16)
-(def *matrix-cols*      16)
+(def *matrix-rows*      16) ;; 16)
+(def *matrix-cols*      16)  ;; 16)
 (def *button-height*    40)
 (def *button-width*     40)
 (def *border-width*     20)
 (def *dx*               10)
 (def *dy*               10)
-(def *bpm*             240) ;;180)
+(def *bpm*              180)
 
 
 ;;Atoms
@@ -138,17 +147,42 @@
 ;;Structs
 (defrecord rgb-color [r g b a]);;unused?
 (defrecord hsb-color [h s b a]);;unused?
-(defrecord button [idx x-pos y-pos edge-length color snd active?])
+(defrecord button [idx x-pos y-pos edge-length color instr snd active?])
 (defrecord ticker [x-pos y-pos radius color])
 
 
 ;;;;;; note sequences
-(defn load-scales [root n & option]
+(defn load-scales [root n & mode]
   "loads n octaves of the provided root scale"
-  (take (* n 8) (drop (* 7 4) (tone/scale (keyword root) :major))))
+  (let [mode (or (and mode (first mode)) :major)]
+    (take (* n 8) (drop (* 7 4) (tone/scale (keyword root) mode)))))
 
-(def *note-matrix*
-     (reverse (flatten (map #(repeat *matrix-cols* %) (load-scales :c (/ *matrix-cols* 8))))))
+(def *note-matrix*  (ref nil))
+
+(defn map-inst
+  "(map-inst [[tb303 (0) 64]])
+   (map-inst [[tb303 :row [0 1 2]]
+              [tb404 :row [3 4 5]]])
+   (map-inst tb303)"
+  [kvs]
+  (let [inst (map first kvs)
+	indices (map second kvs)]))
+
+(defn map-midi [midi]
+  (dosync
+   (ref-set *note-matrix* midi)
+   (ref-set *matrix* (gen-matrix (matrix-coords *matrix-rows* *matrix-cols*)
+				 (map :instr @*matrix*)
+				 midi
+				 (map :active? @*matrix*)))))
+
+(defn change-key
+  ([root]
+   (map-midi (reverse (flatten (map #(repeat *matrix-cols* %)
+				    (load-scales root (/ *matrix-rows* 8) :major))))))
+  ([root mode]
+   (map-midi (reverse (flatten (map #(repeat *matrix-cols* %)
+				    (load-scales root (/ *matrix-rows* 8) mode)))))))
 
 
 (defn ticker-positions
@@ -206,8 +240,8 @@
 
 ;;(defrecord button [x-pos y-pos edge-length color snd active?])
 					;
-(defn create-button [idx x y len color sample active?]
-  (button. idx x y len color sample active?))
+(defn create-button [idx x y len color instr note active?]
+  (button. idx x y len color instr note active?))
 
 
 (defn n-iterate
@@ -232,46 +266,52 @@
 
 
 (defn col-coords
-  "returns a seq of the y-coordinates of each row in an n-column matrix,
-   given an initial starting value y, and a function f, which is called iteratively on x.
+  "returns a seq of the x-coordinates of each row in an n-column matrix,
+   given an initial starting value x, and a function f, which is called iteratively on x.
    result:  [ x , (f x) , (f (f x)) , (f (f (f x))) , ..etc. ] 
 
    hint: x = *border-width*
          f = #(+ % *button-width* *col-offset*)"
-  [m f y]
-  (coords m f y))
+  [m f x]
+  (coords m f x))
 
 
-(defn matrix-coords
+(defn cartesian-product
   "rows and cols are seqs of y and x values (respectively)
    used to lay out the matrix on a cartesian plane."
   [rows cols]
-  (combo/cartesian-product cols rows))
+  (combo/cartesian-product rows cols))
 
-
-(defn gen-matrix [points notes & pattern]
+(defn gen-matrix [points instruments notes & pattern]
   (let [len *button-width*
 	colr *inactive-color*]
-    ;(println "points: " points)
-    (map (fn
-	   [idx xy note state]
-	   (button. idx (second xy) (first xy) len colr note state))
-	 (iterate inc 0)
-	 points
-	 notes
-	 (or pattern (repeat false)))))
-				       
-				       
-(defn create-matrix [m n]
+    ;; (println "points: " points)
+    (doall
+     (map (fn
+	    [idx xy instr note state]
+	    (button. idx (second xy) (first xy) len
+		     (or (and state *active-color*) *inactive-color*)
+		     instr note state))
+	  (iterate inc 0)
+	  points
+	  (or (and (seq? instruments) instruments) (repeat instruments))
+	  notes
+	  ;; (first pattern)
+	  (or (and pattern (first pattern)) (repeat false))
+	  ))))
+
+(defn matrix-coords [m n]
   (let [row-offset-fun #(+ % *button-height* *dy*)
 	col-offset-fun #(+ % *button-width*  *dx*)
 	first-row-pos  *border-width*
 	first-col-pos  *border-width*
 	rows   (row-coords m row-offset-fun first-row-pos)
 	cols   (col-coords n col-offset-fun first-col-pos)
-	coords (matrix-coords rows cols)
-	midi-notes *note-matrix*]
-    (gen-matrix coords midi-notes)))
+	coords (cartesian-product rows cols)]
+    coords))				       
+				       
+(defn create-matrix [m n instr notes pattern]
+  (gen-matrix (matrix-coords m n) instr notes pattern))
 
 
 
@@ -307,10 +347,18 @@
 ;; 		 (inc idx)
 ;; 		 (if end-of-row? (next samples) samples)))))))
 
-(def *matrix* (ref (create-matrix *matrix-rows* *matrix-cols*)))
+(def *matrix* (ref nil))
 
 (defn clear-matrix []
-  (dosync (ref-set *matrix* (create-matrix *matrix-rows* *matrix-cols*))))
+  (let [matrix @*matrix*
+	instr (map :instr matrix)
+	notes (map :snd matrix)
+	pattern (repeat false)]
+    (dosync
+     (ref-set *matrix* (create-matrix *matrix-rows*
+				      *matrix-cols*
+				      instr notes pattern))))
+  "matrix cleared")
 
 (defn nth-row  
   "returns indices of the nth row of an x-by-y matrix.
@@ -337,7 +385,6 @@
 ;; 			     (if turn-on? active-b inactive-b); (:active? cur-b) inactive-b active-b)
 ;;; 			     (:snd cur-b) (if turn-on? true false) ))) vec))
 
-
 (defn activate [vec indices turn-on?]
   (let [vec-len (dec (.size vec))
 	row-len *matrix-cols*
@@ -351,6 +398,7 @@
 	    new-b (when (some #(== idx %) indices)
 		    (button. idx (:x-pos cur-b) (:y-pos cur-b) (:edge-length cur-b)
 			     (if turn-on? active-b inactive-b); (:active? cur-b) inactive-b active-b)
+			     (:instr cur-b)
 			     (:snd cur-b) (if turn-on? true false)))]
 
 	(if (= idx vec-len)
@@ -372,10 +420,12 @@
 					;highlight  
 		    (button. idx (:x-pos cur-b) (:y-pos cur-b) (:edge-length cur-b)
 			     (if (:active? cur-b) active-hl inactive-hl)
+			     (:instr cur-b)
 			     (:snd cur-b) (:active? cur-b))
 					;de-highlight
 		    (button. idx  (:x-pos cur-b) (:y-pos cur-b) (:edge-length cur-b)
 			     (if (:active? cur-b) active-b inactive-b)
+			     (:instr cur-b)
 			     (:snd cur-b) (:active? cur-b)))]
 
 	(if (= idx vec-len)
@@ -396,10 +446,12 @@
 		;highlight  
 		(button. idx (:x-pos cur-b) (:y-pos cur-b) (:edge-length cur-b)
 			 (if (:active? cur-b) active-hl inactive-hl)
+			 (:instr cur-b)
 			 (:snd cur-b) (:active? cur-b))
 		;de-highlight
 		(button. idx  (:x-pos cur-b) (:y-pos cur-b) (:edge-length cur-b)
 			 (if (:active? cur-b) active-b inactive-b)
+			 (:instr cur-b)
 			 (:snd cur-b) (:active? cur-b)))]
 	(if (= idx vec-len)
 	  (conj res new-b)
@@ -446,10 +498,12 @@
 		;highlight  
 		(button. idx (:x-pos cur-b) (:y-pos cur-b) (:edge-length cur-b)
 			 (if (:active? cur-b) active-hl inactive-hl)
+			 (:instr cur-b)
 			 (:snd cur-b) (:active? cur-b))
 		;de-highlight
 		(button. idx  (:x-pos cur-b) (:y-pos cur-b) (:edge-length cur-b)
 			 (if (:active? cur-b) active-b inactive-b)
+			 (:instr cur-b)
 			 (:snd cur-b) (:active? cur-b)))]
 	(if (= idx vec-len)
 	  (conj res new-b)
@@ -510,7 +564,7 @@
 
 ;; (defrecord rgb-color [r g b a])
 ;; (defrecord hsb-color [h s b a])
-;; (defrecord button [idx x-pos y-pos edge-length color snd active?])
+;; (defrecord button [idx x-pos y-pos edge-length color instr snd active?])
 (defn draw-button [button]
   (let [x (:x-pos button)
 	y (:y-pos button)
@@ -644,17 +698,18 @@
 
     (if (over-wipe-matrix-button? x y)
       (swap! *wipe-matrix-trigger* not))
-			 
+    
     (let [[selection? idx] (collision? @*matrix* x y)]
       (println selection? "\n" idx)
-      (when selection?
+      (if selection?
 	(dosync
 	 (if (:active? (nth @*matrix* idx))
 	   (reset! *toggle-on* false)
 	   (reset! *toggle-on* true))
 	 (reset! *starting-block* idx)
 	 (swap!  *visited* conj idx)
-	 (alter *matrix* (fn [vec ind] (activate vec [ind] @*toggle-on*)) idx))))
+	 (alter *matrix* (fn [vec ind] (activate vec [ind] @*toggle-on*)) idx))
+	(reset! *toggle-on* true)))
     (swap! *mouse-button* not)))
 
 (defn mouse-released [evt]
@@ -696,21 +751,36 @@
 	 (let [cur-b (nth vec idx)
 	       new-b (if (= idx bidx)
 		       (button. idx  (:x-pos cur-b) (:y-pos cur-b) (:edge-length cur-b)
-				(if (:active? cur-b) *inactive-color* *active-color*) ;this shoudln't happen here -- dispatch on active? in draw fn to determine color
+				;; the following shouldn't happen here 
+				;; why not dispatch on :active? in (draw-button) to determine color
+				(if (:active? cur-b) *inactive-color* *active-color*) 
+				(:instr cur-b)
 				(:snd cur-b)  (not (:active? cur-b)))
 		       cur-b)]
 	   (if (= idx vec-len)
 	     (conj res new-b)
 	     (recur (conj res new-b) (inc idx))))))))
 
+(defn press-aux-neu [vec bidx]
+  (let [button (nth vec bidx)]
+   (assoc vec bidx (not (:active? button)))))
 
+(defn press
+  "toggles the button at idx on/off"
+  [idx]
+  (dosync (alter *matrix* (fn [m id] (press-aux m id)) idx)))
 
-(defn press [idx]
-  (dosync (ref-set *matrix* (press-aux @*matrix* idx))))
-
+(defn turn-on
+  "turns on the button at idx"
+  [ids]
+  (let [indices (or (and (seq? ids) ids) (seq [ids]))]
+   (dosync (alter *matrix* (fn [m ids] (activate m ids true)) indices))))
 
 (defn load-song [notes]
+  (clear-matrix)
   (dorun (map press notes)))
+
+(defn load-song* [notes] (turn-on (seq notes)))
 
 (def m-agent (agent nil))
 
@@ -771,34 +841,85 @@
 		   (tone/out 0 (* [vol vol] (tone/rlpf (tone/select wave (apply + waves)) fil-cutoff 
 						       r))))))
 
+;; 2011 version
+(def tb303
+     (tone/synth [note 60 wave 1 
+		  cutoff 100 r 0.9 
+		  attack 0.101 decay 0.03 ;; (cos @*time*) ;; 0.05
+		  sustain 1.16 release 0.2 
+		  env  (* 80 (sin @*time*))  ;; 220
+		  gate 0 vol 0.75]
+		 (let [freq (tone/midicps note) 
+		       freqs [freq (* 1.01 freq) (* 1.03 freq)] 
+		       vol-env (tone/env-gen (tone/adsr attack decay sustain release) 
+					     (tone/line:kr 1 0 (+ attack decay release)) 
+					     :action :free) 
+		       fil-env (tone/env-gen (tone/perc)) 
+		       fil-cutoff (+ cutoff (* env fil-env)) 
+		       waves [(* vol-env (tone/saw freqs)) 
+			      (* vol-env [(tone/pulse (first freqs) 0.5)
+					  (tone/lf-tri (second 
+							freqs))])
+			      (* vol-env [(tone/pulse (first freqs) 0.5)
+					  (tone/lf-tri (second (rest freqs)))])]] 
+		   (tone/out 0 (* [vol vol] (tone/rlpf (tone/select wave (apply + waves)) fil-cutoff 
+						       r))))))
+
+
+;; butchered tb303
+(def tb303
+     (tone/synth [note 60 wave 1 
+		  cutoff 100 r 0.9 
+		  attack 0.101 decay 0.03 ;; (cos @*time*) ;; 0.05
+		  sustain 1.16 release 0.2 
+		  env  (* 80 (sin @*time*)) ;; 220
+		  gate 0 vol 0.75]
+		 (let [freq (tone/midicps note) 
+		       freqs [freq (* 4.00 freq) (* 2.00 freq)] 
+		       vol-env (tone/env-gen (tone/adsr attack decay sustain release) 
+					     (tone/line:kr 1 0 (+ attack decay release)) 
+					     :action :free) 
+		       fil-env (tone/env-gen (tone/perc)) 
+		       fil-cutoff (+ cutoff (* env fil-env)) 
+		       waves [(* vol-env (tone/saw freqs)) 
+			      (* vol-env [(tone/pulse (first freqs) 0.5)
+					  (tone/lf-tri (second freqs))])
+			      (* vol-env [(tone/pulse (first freqs) 0.5)
+					  (tone/lf-tri (second (rest freqs)))])]] 
+		   (tone/out 0 (* [vol vol] (tone/rlpf (tone/select wave (apply + waves)) fil-cutoff r))))))
+
 
 (defn simple-player [beat buttons]
-  (let [active? (:active? (get-button (first buttons)))
-	note (:snd (get-button (first buttons)))]
+  (let [button (get-button (first buttons))
+	active? (:active? button)
+	note (:snd button)
+	instr (:instr button)]
 
     (tone/at (metro beat)
-	     (when active? (tb303 note))) 
+	     (when active? (instr note))) 
     
 
     (tone/apply-at (metro (inc beat))
 		   #'simple-player
-		   (inc beat)
-		   (next buttons))))
+		   [(inc beat)
+		    (next buttons)])))
 
 
 (defn simple-player2 [beat buttons]
-  (let [active? (:active? (get-button (first buttons)))
-	smpl (:snd (get-button (first buttons)))]
+  (let [button (get-button (first buttons))
+	active? (:active? button)
+	note (:snd button)
+	instr (:instr button)]
 
     (tone/at (metro beat)
 	     (update-ticker)
-	     (when active? (smpl))) ;plays sample
+	     (when active? (instr note))) ;plays sample
     
 
     (tone/apply-at (metro (inc beat))
 		   #'simple-player2
-		   (inc beat)
-		   (next buttons))))
+		   [(inc beat)
+		    (next buttons)])))
 
 
 
@@ -818,11 +939,25 @@
   (smooth)
   (background-float 200 200 255)
   (framerate *framerate*)
-  (dosync 
-   (ref-set *ticker-position*  (cycle (take *matrix-rows*
-					    (iterate #(+ % (+ *button-width* *dx*))
-						     (+ *border-width* (/ *button-width* 2))))))
-   (ref-set *ticker* (init-ticker)))
+
+  ;; (dosync (ref-set *note-matrix* (reverse (flatten (map #(repeat *matrix-cols* %)
+  ;; 						 (load-scales :c (/ *matrix-rows* 8)))))))
+  (dosync
+    (ref-set
+     *note-matrix* (reverse (flatten (map #(repeat *matrix-cols* %)
+					  (load-scales :c (/ *matrix-rows* 8))))))
+											 
+    (ref-set
+     *matrix* (create-matrix *matrix-rows* *matrix-cols* #'tb303
+			     @*note-matrix* (repeat (* *matrix-rows* *matrix-cols*) false)))
+
+   (ref-set
+    *ticker-position* (cycle (take *matrix-rows*
+				    (iterate #(+ % (+ *button-width* *dx*))
+					     (+ *border-width* (/ *button-width* 2))))))
+   (ref-set
+    *ticker* (init-ticker)))
+
   (let [rows (map #(nth-row % *matrix-rows* *matrix-cols*)
 		  (range *matrix-cols*))]
     (doall
@@ -854,14 +989,12 @@
 
 
 
-
 ;; TODO
 ;; change-scale
 ;; mute-region
 ;; snapshots [record song progression]
 
 ;; ticker / light-up note
-
 
 
 ;; (tone/stop)

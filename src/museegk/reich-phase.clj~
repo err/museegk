@@ -8,7 +8,7 @@
 						    
 (defn play-scale [time notes sep] 
   (let [next-tick (+ time sep)] 
-    (at time (beep (first notes))) 
+    (at time (tb303 (first notes))) 
     (apply-at #'play-scale next-tick next-tick (next notes) sep))) 
 								   
 (defn reich [tempo offset] 
@@ -50,7 +50,5 @@
         fil-env (env-gen (perc)) 
         fil-cutoff (+ cutoff (* env fil-env)) 
         waves [(* vol-env (saw freqs)) 
-               (* vol-env [(pulse (first freqs) 0.5) (lf-tri (second 
-freqs))])]] 
-    (out 0 (* [vol vol] (rlpf (select wave (apply + waves)) fil-cutoff 
-r))))) 
+               (* vol-env [(pulse (first freqs) 0.5) (lf-tri (second freqs))])]] 
+    (out 0 (* [vol vol] (rlpf (select wave (apply + waves)) fil-cutoff r))))) 

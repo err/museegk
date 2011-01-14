@@ -9,7 +9,7 @@
 (defn play-scale [time notes sep] 
   (let [next-tick (+ time sep)] 
     (at time (tb303 (first notes))) 
-    (apply-at #'play-scale next-tick next-tick (next notes) sep))) 
+    (apply-at next-tick #'play-scale (next notes))))
 								   
 (defn reich [tempo offset] 
    (let [time (+ 400 (now)) 
@@ -51,4 +51,15 @@
         fil-cutoff (+ cutoff (* env fil-env)) 
         waves [(* vol-env (saw freqs)) 
                (* vol-env [(pulse (first freqs) 0.5) (lf-tri (second freqs))])]] 
-    (out 0 (* [vol vol] (rlpf (select wave (apply + waves)) fil-cutoff r))))) 
+    (out 0 (* [vol vol] (rlpf (select wave (apply + waves)) fil-cutoff r)))))
+
+
+(let [tempo* 220]
+  (def metro (metronome tempo*)))
+
+
+(def ez-notes* (cycle (shuffle [63 67 69 69 65 66 67])))
+
+(defn ez-play [beat notes]
+  (at (metro beat) (tb303 (first notes)))
+  (apply-at (metro (inc beat)) #'ez-play (inc beat) (next notes)))
